@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h1 class="mt-5">Agent Management</h1>
+<div class="row mt-3">
+    <div class="col-md-12">
+        <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#agentModal">Create Agent</button>
+        <table class="table" id="agentsTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Description</th>
+                    <th>Service</th>
+                    <th>Input Format</th>
+                    <th>Output Format</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Agents will be appended here -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="agentModal" tabindex="-1" role="dialog" aria-labelledby="agentModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="agentModalLabel">Create Agent</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="agentForm">
+                    <input type="hidden" id="agent_id">
+                    <div class="form-group">
+                        <label for="agent_name">Agent Name</label>
+                        <input type="text" class="form-control" id="agent_name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="description">Agent Description</label>
+                        <input type="text" class="form-control" id="description">
+                    </div>
+                    <div class="form-group">
+                        <label for="service_id">Service</label>
+                        <select class="form-control" id="service_id" required>
+                            <!-- Services will be loaded here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="input_format">Input Format</label>
+                        <textarea class="form-control" id="input_format" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="output_format">Output Format</label>
+                        <textarea class="form-control" id="output_format" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Agent</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import AgentManager from "{{ url_for('static', filename='js/agent.js') }}";
+    import ServiceManager from "{{ url_for('static', filename='js/service.js') }}";
+
+    const agentManager = new AgentManager(window.location.origin);
+    const serviceManager = new ServiceManager(window.location.origin);
+
+    document.addEventListener('DOMContentLoaded', () => {
+        fetchAndDisplayAgents();
+        loadServices();
+
+        $('#agentForm').submit((e) => {
+            e.preventDefault();
+            saveAgent();
+        });
+
+        $('body').on('click', '.edit-agent', async (event) => {
+            const agentId = $(event.target).data('id');
+            const agent = await agentManager.getAgent(agentId);
+            $('#agent_id').val(agent.agent_id);
+            $('#agent_name').val(agent.agent_name);
+            $('#description').val(agent.description);
+            $('#service_id').val(agent.service_id);
+            $('#input_format').val(JSON.stringify(agent.input_format));
+            $('#output_format').val(JSON.stringify(agent.output_format));
+            $('#agentModalLabel').text('Edit Agent');
+            $('#agentModal').modal('show');
+        });
+
+        $('body').on('click', '.delete-agent', async (event) => {
+            const agentId = $(event.target).data('id');
+            if (confirm('Are you sure you want to delete this agent?')) {
+                await agentManager.deleteAgent(agentId);
+                fetchAndDisplayAgents();
+            }
+        });
+
+        $('#agentModal').on('hidden.bs.modal', () => {
+            resetForm();
+        });
+
+        async function fetchAndDisplayAgents() {
+            const agents = await agentManager.fetchAgents();
+            const agentsTableBody = $('#agentsTable tbody');
+            agentsTableBody.empty();
+            agents.forEach(async function (agent) {
+                const service = await serviceManager.getService(agent.service_id);
+                agentsTableBody.append(`
+                    <tr>
+                        <td>${agent.agent_id}</td>
+                        <td>${agent.agent_name}</td>
+                        <td>${agent.description}</td>
+                        <td>${service.service_name}</td>
+                        <td>
+                            <pre id="json-output">${JSON.stringify(agent.input_format, null, 2)}</pre>
+                        </td>
+                        <td>
+                            <pre id="json-output">${JSON.stringify(agent.output_format, null, 2)}</pre>
+                        </td>
+                        <td>
+                            <div class="d-flex flex-wrap gap-2">                                    
+                                <button class="btn btn-warning btn-sm edit-agent w-100" data-id="${agent.agent_id}" style="max-width: 8rem;">Edit</button>   
+                                <button class="btn btn-danger btn-sm delete-agent w-100" data-id="${agent.agent_id}" style="max-width: 8rem;">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                `);
+            });
+        }
+
+        async function saveAgent() {
+            const agentId = $('#agent_id').val();
+            const agentData = {
+                agent_name: $('#agent_name').val(),
+                description: $('#description').val(),
+                service_id: $('#service_id').val(),
+                input_format: JSON.parse($('#input_format').val()),
+                output_format: JSON.parse($('#output_format').val())
+            };
+            if (agentId) {
+                await agentManager.updateAgent(agentId, agentData);
+            } else {
+                await agentManager.createAgent(agentData);
+            }
+            $('#agentModal').modal('hide');
+            fetchAndDisplayAgents();
+        }
+
+        async function loadServices() {
+            const services = await serviceManager.fetchServices();            
+            const serviceSelect = $('#service_id');
+            serviceSelect.empty();
+            services.forEach(service => {
+                serviceSelect.append(new Option(service.service_name, service.service_id));
+            });
+        }
+
+        function resetForm() {
+            $('#agentForm')[0].reset();
+            $('#agentModalLabel').text('Create Agent');
+            $('#agent_id').val('');
+        }
+    });
+</script>
+
+{% endblock %}

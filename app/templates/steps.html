@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h1 class="mt-5">Step Management</h1>
+<div class="row mt-3">
+    <div class="col-md-12">
+        <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#stepModal">Create Step</button>
+        <table class="table" id="stepsTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Step Number</th>
+                    <th>Agent ID</th>
+                    <th>Instructions</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Steps will be appended here -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Step Modal -->
+<div class="modal fade" id="stepModal" tabindex="-1" role="dialog" aria-labelledby="stepModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="stepModalLabel">Create Step</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="stepForm">
+                    <input type="hidden" id="step_id">
+                    <input type="hidden" id="flow_id_step">
+                    <div class="form-group">
+                        <label for="agent_id">Agent ID</label>
+                        <input type="number" class="form-control" id="agent_id" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="step_number">Step Number</label>
+                        <input type="number" class="form-control" id="step_number" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="instructions">Instructions</label>
+                        <textarea class="form-control" id="instructions" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Step</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import StepManager from "{{ url_for('static', filename='js/step.js') }}";
+
+    const stepManager = new StepManager(window.location.origin);
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const flowId = new URLSearchParams(window.location.search).get('flow_id');
+        if (flowId) {
+            fetchAndDisplaySteps(flowId);
+            document.getElementById('flow_id_step').value = flowId;
+        }
+
+        $('#stepForm').submit((e) => {
+            e.preventDefault();
+            saveStep();
+        });
+
+        $('body').on('click', '.edit-step', async (event) => {
+            const stepId = $(event.target).data('id');
+            const step = await stepManager.getStep(stepId);
+            $('#step_id').val(step.step_id);
+            $('#flow_id_step').val(step.flow_id);
+            $('#agent_id').val(step.agent_id);
+            $('#step_number').val(step.step_number);
+            $('#instructions').val(JSON.stringify(step.instructions));
+            $('#stepModalLabel').text('Edit Step');
+            $('#stepModal').modal('show');
+        });
+
+        $('body').on('click', '.delete-step', async (event) => {
+            const stepId = $(event.target).data('id');
+            if (confirm('Are you sure you want to delete this step?')) {
+                await stepManager.deleteStep(stepId);
+                fetchAndDisplaySteps($('#flow_id_step').val());
+            }
+        });
+
+        $('#stepModal').on('hidden.bs.modal', () => {
+            resetStepForm();
+        });
+
+        async function fetchAndDisplaySteps(flowId) {
+            const steps = await stepManager.fetchSteps(flowId);
+            const stepsTableBody = $('#stepsTable tbody');
+            stepsTableBody.empty();
+            steps.forEach(step => {
+                stepsTableBody.append(`
+                    <tr>
+                        <td>${step.step_id}</td>
+                        <td>${step.step_number}</td>
+                        <td>${step.agent_id}</td>
+                        <td>${JSON.stringify(step.instructions)}</td>
+                        <td>
+                            <button class="btn btn-warning btn-sm edit-step" data-id="${step.step_id}">Edit</button>
+                            <button class="btn btn-danger btn-sm delete-step" data-id="${step.step_id}">Delete</button>
+                        </td>
+                    </tr>
+                `);
+            });
+        }
+
+        async function saveStep() {
+            const stepData = {
+                step_id: $('#step_id').val(),
+                flow_id: $('#flow_id_step').val(),
+                agent_id: $('#agent_id').val(),
+                step_number: $('#step_number').val(),
+                instructions: JSON.parse($('#instructions').val()),
+            };
+            await stepManager.createStep(stepData);
+            $('#stepModal').modal('hide');
+            fetchAndDisplaySteps($('#flow_id_step').val());
+        }
+
+        function resetStepForm() {
+            $('#stepForm')[0].reset();
+            $('#step_id').val('');
+            $('#stepModalLabel').text('Create Step');
+        }
+    });
+</script>
+
+{% endblock %}

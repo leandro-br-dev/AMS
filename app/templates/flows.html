@@ -1,0 +1,344 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h1 class="mt-5">Flow Management</h1>
+<div class="row mt-3">
+    <div class="col-md-12">
+        <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#flowModal">Create Flow</button>
+        <table class="table" id="flowsTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Description</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Flows will be appended here -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Flow Modal -->
+<div class="modal fade" id="flowModal" tabindex="-1" role="dialog" aria-labelledby="flowModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="flowModalLabel">Create Flow</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="flowForm">
+                    <input type="hidden" id="flow_id">
+                    <div class="form-group">
+                        <label for="flow_name">Name</label>
+                        <input type="text" class="form-control" id="flow_name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="flow_description">Description</label>
+                        <textarea class="form-control" id="flow_description" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Flow</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Step Management Modal -->
+<div class="modal fade" id="stepManagementModal" tabindex="-1" role="dialog" aria-labelledby="stepManagementModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="stepManagementModalLabel">Manage Steps</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <table class="table" id="stepsTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Step Number</th>
+                            <th>Agent ID</th>
+                            <th>Instructions</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Steps will be appended here -->
+                    </tbody>
+                </table>
+                <button class="btn btn-primary" id="addStepBtn" onclick="openStepModal($('#flow_id_step').val())">Add Step</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Step Modal -->
+<div class="modal fade" id="stepModal" tabindex="-1" aria-labelledby="stepModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="stepModalLabel">Create Step</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="stepForm">
+                    <input type="hidden" id="step_id">
+                    <input type="hidden" id="flow_id_step">
+                    <div class="mb-3">
+                        <label for="agent_id" class="form-label">Agent</label>
+                        <select id="agent_id" class="form-select"></select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="step_number" class="form-label">Step Number</label>
+                        <input type="number" class="form-control" id="step_number" required disabled>
+                    </div>
+                    <div class="mb-3">
+                        <label for="instructions" class="form-label">Instructions</label>
+                        <textarea class="form-control" id="instructions" rows="3" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script type="module">
+    import FlowManager from "{{ url_for('static', filename='js/flow.js') }}";
+    import StepManager from "{{ url_for('static', filename='js/step.js') }}";
+    import AgentManager from "{{ url_for('static', filename='js/agent.js') }}";
+
+    const flowManager = new FlowManager(window.location.origin);
+    const stepManager = new StepManager(window.location.origin);
+    const agentManager = new AgentManager(window.location.origin);
+
+    document.addEventListener('DOMContentLoaded', () => {
+        fetchAndDisplayFlows();
+        loadAgents();
+
+        $('#flowForm').submit((e) => {
+            e.preventDefault();
+            saveFlow();
+        });
+
+        $('#stepForm').submit((e) => {
+            e.preventDefault();
+            saveStep();
+        });
+
+        $('body').on('click', '.edit-flow', async (event) => {
+            const flowId = $(event.target).data('id');
+            const flow = await flowManager.getFlow(flowId);
+            $('#flow_id').val(flow.flow_id);
+            $('#flow_name').val(flow.name);
+            $('#flow_description').val(flow.description);
+            $('#flowModalLabel').text('Edit Flow');
+            $('#flowModal').modal('show');
+        });
+
+        $('body').on('click', '.delete-flow', async (event) => {
+            const flowId = $(event.target).data('id');
+            if (confirm('Are you sure you want to delete this flow?')) {
+                await flowManager.deleteFlow(flowId);
+                fetchAndDisplayFlows();
+            }
+        });
+
+        $('body').on('click', '.manage-steps', async (event) => {
+            const flowId = $(event.target).data('id');
+            $('#flow_id_step').val(flowId);
+            fetchAndDisplaySteps(flowId);
+            $('#stepManagementModal').modal('show');
+        });
+
+        $('#flowModal').on('hidden.bs.modal', () => {
+            resetFlowForm();
+        });
+
+        $('#stepModal').on('hidden.bs.modal', () => {
+            resetStepForm();
+        });
+
+        async function fetchAndDisplayFlows() {
+            const flows = await flowManager.fetchFlows();
+            const flowsTableBody = $('#flowsTable tbody');
+            flowsTableBody.empty();
+            flows.forEach(flow => {
+                flowsTableBody.append(`
+                    <tr>
+                        <td>${flow.flow_id}</td>
+                        <td>${flow.name}</td>
+                        <td>${flow.description}</td>
+                        <td>
+                            <button class="btn btn-warning btn-sm edit-flow" data-id="${flow.flow_id}">Edit</button>
+                            <button class="btn btn-danger btn-sm delete-flow" data-id="${flow.flow_id}">Delete</button>
+                            <button class="btn btn-info btn-sm manage-steps" data-id="${flow.flow_id}">Manage Steps</button>
+                        </td>
+                    </tr>
+                `);
+            });
+        }
+
+        async function loadAgents() {
+            const agents = await agentManager.fetchAgents();
+            const agentSelect = $('#agent_id');
+            agentSelect.empty();
+            agents.forEach(agent => {
+                agentSelect.append(new Option(agent.agent_name, agent.agent_id));
+            });
+        }
+
+        async function saveFlow() {
+            const flowData = {
+                name: $('#flow_name').val(),
+                description: $('#flow_description').val(),
+            };
+            const flowId = $('#flow_id').val();
+            if (flowId) {
+                await flowManager.updateFlow(flowId, flowData);
+            } else {
+                await flowManager.createFlow(flowData);
+            }
+            $('#flowModal').modal('hide');
+            fetchAndDisplayFlows();
+        }
+
+        async function openStepModal(flowId, stepId = null) {
+            $('#flow_id_step').val(flowId);
+            if (stepId) {
+                const step = await stepManager.getStep(stepId);
+                $('#step_id').val(step.step_id);
+                $('#agent_id').val(step.agent_id);
+                $('#step_number').val(step.step_number);
+                $('#instructions').val(step.instructions);
+            } else {
+                const steps = await stepManager.fetchSteps(flowId);
+                const nextStepNumber = steps.length ? Math.max(...steps.map(s => s.step_number)) + 1 : 1;
+                $('#step_id').val('');
+                $('#agent_id').val('');
+                $('#step_number').val(nextStepNumber);
+                $('#instructions').val('');
+            }
+            $('#step_number').prop('disabled', true); // Número da step desativado para edição
+            $('#stepModal').modal('show');
+        }
+
+        async function fetchAndDisplaySteps(flowId) {
+            const steps = await stepManager.fetchSteps(flowId);
+            const stepsTableBody = $('#stepsTable tbody');
+            stepsTableBody.empty();
+            steps.forEach(step => {
+                stepsTableBody.append(`
+                    <tr>
+                        <td>${step.step_id}</td>
+                        <td>${step.step_number}</td>
+                        <td>${step.agent_id}</td>
+                        <td>${step.instructions}</td>
+                        <td>
+                            <button class="btn btn-warning btn-sm edit-step" data-id="${step.step_id}">Edit</button>
+                            <button class="btn btn-danger btn-sm delete-step" data-id="${step.step_id}">Delete</button>
+                            <button class="btn btn-secondary btn-sm move-up" data-id="${step.step_id}" data-flow-id="${step.flow_id}" data-step-number="${step.step_number}">Up</button>
+                            <button class="btn btn-secondary btn-sm move-down" data-id="${step.step_id}" data-flow-id="${step.flow_id}" data-step-number="${step.step_number}">Down</button>
+                        </td>
+                    </tr>
+                `);
+            });
+        }
+
+        async function saveStep() {
+            const stepData = {
+                flow_id: $('#flow_id_step').val(),
+                agent_id: $('#agent_id').val(),
+                step_number: $('#step_number').val(),
+                instructions: $('#instructions').val()
+            };
+            const stepId = $('#step_id').val();
+            if (stepId) {
+                await stepManager.updateStep(stepId, stepData);
+            } else {
+                await stepManager.createStep(stepData);
+            }
+            $('#stepModal').modal('hide');
+            fetchAndDisplaySteps(stepData.flow_id);
+        }
+
+        $('body').on('click', '.edit-step', async (event) => {
+            const stepId = $(event.target).data('id');
+            const step = await stepManager.getStep(stepId);
+            $('#step_id').val(step.step_id);
+            $('#flow_id_step').val(step.flow_id);
+            $('#agent_id').val(step.agent_id);
+            $('#step_number').val(step.step_number);
+            $('#instructions').val(step.instructions);
+            $('#stepModalLabel').text('Edit Step');
+            $('#stepModal').modal('show');
+        });
+
+        $('body').on('click', '.delete-step', async (event) => {
+            const stepId = $(event.target).data('id');
+            const flowId = $('#flow_id_step').val();
+            if (confirm('Are you sure you want to delete this step?')) {
+                await stepManager.deleteStep(stepId);
+                fetchAndDisplaySteps(flowId);
+            }
+        });
+
+        $('body').on('click', '.move-up', async (event) => {
+            const stepId = $(event.target).data('id');
+            const flowId = $(event.target).data('flow-id');
+            const stepNumber = $(event.target).data('step-number');
+            const steps = await stepManager.fetchSteps(flowId);
+            const currentStep = steps.find(step => step.step_id === stepId);
+            const previousStep = steps.find(step => step.step_number === stepNumber - 1);
+
+            if (previousStep) {
+                currentStep.step_number--;
+                previousStep.step_number++;
+                await stepManager.updateStep(currentStep.step_id, currentStep);
+                await stepManager.updateStep(previousStep.step_id, previousStep);
+                fetchAndDisplaySteps(flowId);
+            }
+        });
+
+        $('body').on('click', '.move-down', async (event) => {
+            const stepId = $(event.target).data('id');
+            const flowId = $(event.target).data('flow-id');
+            const stepNumber = $(event.target).data('step-number');
+            const steps = await stepManager.fetchSteps(flowId);
+            const currentStep = steps.find(step => step.step_id === stepId);
+            const nextStep = steps.find(step => step.step_number === stepNumber + 1);
+
+            if (nextStep) {
+                currentStep.step_number++;
+                nextStep.step_number--;
+                await stepManager.updateStep(currentStep.step_id, currentStep);
+                await stepManager.updateStep(nextStep.step_id, nextStep);
+                fetchAndDisplaySteps(flowId);
+            }
+        });
+
+        function resetFlowForm() {
+            $('#flow_id').val('');
+            $('#flow_name').val('');
+            $('#flow_description').val('');
+            $('#flowModalLabel').text('Create Flow');
+        }
+
+        function resetStepForm() {
+            $('#step_id').val('');
+            $('#agent_id').val('');
+            $('#step_number').val('');
+            $('#instructions').val('');
+            $('#stepModalLabel').text('Create Step');
+        }
+    });
+</script>
+
+
+{% endblock %}
